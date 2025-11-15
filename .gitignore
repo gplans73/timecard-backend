@@ -1,0 +1,18 @@
+# Environment variables
+.env
+
+# OS files
+.DS_Store
+*.swp
+*.swo
+
+# IDE
+.idea/
+.vscode/
+
+# Build artifacts
+main
+*.exe
+
+# Logs
+*.log
