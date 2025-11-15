@@ -360,27 +360,31 @@ func generatePDFFromExcel(excelData []byte, filename string) ([]byte, error) {
     return pdfData, nil
 }
 
-// Helper to set cell value while preserving style (borders, fonts, colors)
-func setCellValuePreserveStyle(f *excelize.File, sheet string, cell string, value interface{}) error {
-    // Get existing style
-    styleID, err := f.GetCellStyle(sheet, cell)
-    if err != nil {
-        styleID = 0 // Use default if style fetch fails
-    }
-    
-    // Set the value
+// Helper to set cell value with borders
+func setCellValueWithBorder(f *excelize.File, sheet string, cell string, value interface{}) error {
+    // Set the value first
     if err := f.SetCellValue(sheet, cell, value); err != nil {
         return err
     }
     
-    // Reapply the style to preserve borders and formatting
-    if styleID > 0 {
-        return f.SetCellStyle(sheet, cell, cell, styleID)
+    // Create a style with thin borders on all sides
+    style, err := f.NewStyle(&excelize.Style{
+        Border: []excelize.Border{
+            {Type: "left", Color: "000000", Style: 1},
+            {Type: "top", Color: "000000", Style: 1},
+            {Type: "bottom", Color: "000000", Style: 1},
+            {Type: "right", Color: "000000", Style: 1},
+        },
+    })
+    if err != nil {
+        return err
     }
-    return nil
+    
+    // Apply the border style
+    return f.SetCellStyle(sheet, cell, cell, style)
 }
 
-// Fill a single week sheet with headers and daily hours while preserving borders
+// Fill a single week sheet with headers and daily hours with borders
 func fillWeekSheet(f *excelize.File, sheet string, req TimecardRequest, week WeekData, weekNum int) error {
     weekStart, err := time.Parse(time.RFC3339, week.WeekStartDate)
     if err != nil {
@@ -389,12 +393,12 @@ func fillWeekSheet(f *excelize.File, sheet string, req TimecardRequest, week Wee
     log.Printf("=== Filling %s (week %d) start=%s entries=%d ===",
         sheet, weekNum, weekStart.Format("2006-01-02"), len(week.Entries))
 
-    // Header info (cells from your template) - preserve styles
-    _ = setCellValuePreserveStyle(f, sheet, "M2", req.EmployeeName)
-    _ = setCellValuePreserveStyle(f, sheet, "AJ2", req.PayPeriodNum)
-    _ = setCellValuePreserveStyle(f, sheet, "AJ3", req.Year)
-    _ = setCellValuePreserveStyle(f, sheet, "B4", timeToExcelDate(weekStart))
-    _ = setCellValuePreserveStyle(f, sheet, "AJ4", week.WeekLabel)
+    // Header info (cells from your template) - with borders
+    _ = setCellValueWithBorder(f, sheet, "M2", req.EmployeeName)
+    _ = setCellValueWithBorder(f, sheet, "AJ2", req.PayPeriodNum)
+    _ = setCellValueWithBorder(f, sheet, "AJ3", req.Year)
+    _ = setCellValueWithBorder(f, sheet, "B4", timeToExcelDate(weekStart))
+    _ = setCellValueWithBorder(f, sheet, "AJ4", week.WeekLabel)
 
     // Columns: labour codes in C,E,G,... and job numbers in D,F,H,...
     codeCols := []string{"C", "E", "G", "I", "K", "M", "O", "Q", "S", "U", "W", "Y", "AA", "AC", "AE", "AG"}
@@ -409,7 +413,7 @@ func fillWeekSheet(f *excelize.File, sheet string, req TimecardRequest, week Wee
     regularKeys := getUniqueJobNumbersForType(week.Entries, false)
     overtimeKeys := getUniqueJobNumbersForType(week.Entries, true)
 
-    // Fill row 4 (regular headers) - preserve styles
+    // Fill row 4 (regular headers) - with borders
     if len(regularKeys) > 0 {
         for i, key := range regularKeys {
             if i >= len(codeCols) {
@@ -425,15 +429,15 @@ func fillWeekSheet(f *excelize.File, sheet string, req TimecardRequest, week Wee
                 if night {
                     code = "N" + code
                 }
-                _ = setCellValuePreserveStyle(f, sheet, codeCols[i]+"4", code)   // labour code
-                _ = setCellValuePreserveStyle(f, sheet, jobCols[i]+"4", actual)  // job number
+                _ = setCellValueWithBorder(f, sheet, codeCols[i]+"4", code)   // labour code
+                _ = setCellValueWithBorder(f, sheet, jobCols[i]+"4", actual)  // job number
                 log.Printf("  regular header %s4=%s (code), %s4=%s (job)",
                     codeCols[i], code, jobCols[i], actual)
             }
         }
     }
 
-    // Fill row 15 (overtime headers) - preserve styles
+    // Fill row 15 (overtime headers) - with borders
     if len(overtimeKeys) > 0 {
         for i, key := range overtimeKeys {
             if i >= len(codeCols) {
@@ -449,8 +453,8 @@ func fillWeekSheet(f *excelize.File, sheet string, req TimecardRequest, week Wee
                 if night {
                     code = "N" + code
                 }
-                _ = setCellValuePreserveStyle(f, sheet, codeCols[i]+"15", code)  // labour code
-                _ = setCellValuePreserveStyle(f, sheet, jobCols[i]+"15", actual) // job number
+                _ = setCellValueWithBorder(f, sheet, codeCols[i]+"15", code)  // labour code
+                _ = setCellValueWithBorder(f, sheet, jobCols[i]+"15", actual) // job number
                 log.Printf("  overtime header %s15=%s (code), %s15=%s (job)",
                     codeCols[i], code, jobCols[i], actual)
             }
@@ -486,7 +490,7 @@ func fillWeekSheet(f *excelize.File, sheet string, req TimecardRequest, week Wee
         }
     }
 
-    // Write dates + hours (never touch formula columns) - preserve styles
+    // Write dates + hours with borders
     for d := 0; d < 7; d++ {
         day := weekStart.AddDate(0, 0, d)
         dateKey := day.Format("2006-01-02")
@@ -495,8 +499,8 @@ func fillWeekSheet(f *excelize.File, sheet string, req TimecardRequest, week Wee
         rowReg := 5 + d
         rowOT := 16 + d
 
-        _ = setCellValuePreserveStyle(f, sheet, fmt.Sprintf("B%d", rowReg), dateSerial)
-        _ = setCellValuePreserveStyle(f, sheet, fmt.Sprintf("B%d", rowOT), dateSerial)
+        _ = setCellValueWithBorder(f, sheet, fmt.Sprintf("B%d", rowReg), dateSerial)
+        _ = setCellValueWithBorder(f, sheet, fmt.Sprintf("B%d", rowOT), dateSerial)
 
         if hours := regMap[dateKey]; hours != nil {
             for i, key := range regularKeys {
@@ -505,7 +509,7 @@ func fillWeekSheet(f *excelize.File, sheet string, req TimecardRequest, week Wee
                 }
                 if v, ok := hours[key]; ok && v != 0 {
                     cell := fmt.Sprintf("%s%d", codeCols[i], rowReg)
-                    _ = setCellValuePreserveStyle(f, sheet, cell, v) // numeric - preserve style
+                    _ = setCellValueWithBorder(f, sheet, cell, v) // numeric with border
                     log.Printf("    REG %s = %.2f (%s)", cell, v, key)
                 }
             }
@@ -517,7 +521,7 @@ func fillWeekSheet(f *excelize.File, sheet string, req TimecardRequest, week Wee
                 }
                 if v, ok := hours[key]; ok && v != 0 {
                     cell := fmt.Sprintf("%s%d", codeCols[i], rowOT)
-                    _ = setCellValuePreserveStyle(f, sheet, cell, v) // numeric - preserve style
+                    _ = setCellValueWithBorder(f, sheet, cell, v) // numeric with border
                     log.Printf("    OT  %s = %.2f (%s)", cell, v, key)
                 }
             }
