@@ -360,14 +360,8 @@ func generatePDFFromExcel(excelData []byte, filename string) ([]byte, error) {
     return pdfData, nil
 }
 
-// Helper to set cell value with borders
-func setCellValueWithBorder(f *excelize.File, sheet string, cell string, value interface{}) error {
-    // Set the value first
-    if err := f.SetCellValue(sheet, cell, value); err != nil {
-        return err
-    }
-    
-    // Create a style with thin borders on all sides
+// Apply borders to a range of cells
+func applyBordersToRange(f *excelize.File, sheet string, startCell string, endCell string) error {
     style, err := f.NewStyle(&excelize.Style{
         Border: []excelize.Border{
             {Type: "left", Color: "000000", Style: 1},
@@ -379,12 +373,10 @@ func setCellValueWithBorder(f *excelize.File, sheet string, cell string, value i
     if err != nil {
         return err
     }
-    
-    // Apply the border style
-    return f.SetCellStyle(sheet, cell, cell, style)
+    return f.SetCellStyle(sheet, startCell, endCell, style)
 }
 
-// Fill a single week sheet with headers and daily hours with borders
+// Fill a single week sheet with headers and daily hours
 func fillWeekSheet(f *excelize.File, sheet string, req TimecardRequest, week WeekData, weekNum int) error {
     weekStart, err := time.Parse(time.RFC3339, week.WeekStartDate)
     if err != nil {
@@ -393,12 +385,12 @@ func fillWeekSheet(f *excelize.File, sheet string, req TimecardRequest, week Wee
     log.Printf("=== Filling %s (week %d) start=%s entries=%d ===",
         sheet, weekNum, weekStart.Format("2006-01-02"), len(week.Entries))
 
-    // Header info (cells from your template) - with borders
-    _ = setCellValueWithBorder(f, sheet, "M2", req.EmployeeName)
-    _ = setCellValueWithBorder(f, sheet, "AJ2", req.PayPeriodNum)
-    _ = setCellValueWithBorder(f, sheet, "AJ3", req.Year)
-    _ = setCellValueWithBorder(f, sheet, "B4", timeToExcelDate(weekStart))
-    _ = setCellValueWithBorder(f, sheet, "AJ4", week.WeekLabel)
+    // Header info - just set values
+    _ = f.SetCellValue(sheet, "M2", req.EmployeeName)
+    _ = f.SetCellValue(sheet, "AJ2", req.PayPeriodNum)
+    _ = f.SetCellValue(sheet, "AJ3", req.Year)
+    _ = f.SetCellValue(sheet, "B4", timeToExcelDate(weekStart))
+    _ = f.SetCellValue(sheet, "AJ4", week.WeekLabel)
 
     // Columns: labour codes in C,E,G,... and job numbers in D,F,H,...
     codeCols := []string{"C", "E", "G", "I", "K", "M", "O", "Q", "S", "U", "W", "Y", "AA", "AC", "AE", "AG"}
@@ -413,7 +405,7 @@ func fillWeekSheet(f *excelize.File, sheet string, req TimecardRequest, week Wee
     regularKeys := getUniqueJobNumbersForType(week.Entries, false)
     overtimeKeys := getUniqueJobNumbersForType(week.Entries, true)
 
-    // Fill row 4 (regular headers) - with borders
+    // Fill row 4 (regular headers)
     if len(regularKeys) > 0 {
         for i, key := range regularKeys {
             if i >= len(codeCols) {
@@ -429,15 +421,15 @@ func fillWeekSheet(f *excelize.File, sheet string, req TimecardRequest, week Wee
                 if night {
                     code = "N" + code
                 }
-                _ = setCellValueWithBorder(f, sheet, codeCols[i]+"4", code)   // labour code
-                _ = setCellValueWithBorder(f, sheet, jobCols[i]+"4", actual)  // job number
+                _ = f.SetCellValue(sheet, codeCols[i]+"4", code)
+                _ = f.SetCellValue(sheet, jobCols[i]+"4", actual)
                 log.Printf("  regular header %s4=%s (code), %s4=%s (job)",
                     codeCols[i], code, jobCols[i], actual)
             }
         }
     }
 
-    // Fill row 15 (overtime headers) - with borders
+    // Fill row 15 (overtime headers)
     if len(overtimeKeys) > 0 {
         for i, key := range overtimeKeys {
             if i >= len(codeCols) {
@@ -453,8 +445,8 @@ func fillWeekSheet(f *excelize.File, sheet string, req TimecardRequest, week Wee
                 if night {
                     code = "N" + code
                 }
-                _ = setCellValueWithBorder(f, sheet, codeCols[i]+"15", code)  // labour code
-                _ = setCellValueWithBorder(f, sheet, jobCols[i]+"15", actual) // job number
+                _ = f.SetCellValue(sheet, codeCols[i]+"15", code)
+                _ = f.SetCellValue(sheet, jobCols[i]+"15", actual)
                 log.Printf("  overtime header %s15=%s (code), %s15=%s (job)",
                     codeCols[i], code, jobCols[i], actual)
             }
@@ -490,7 +482,7 @@ func fillWeekSheet(f *excelize.File, sheet string, req TimecardRequest, week Wee
         }
     }
 
-    // Write dates + hours with borders
+    // Write dates + hours
     for d := 0; d < 7; d++ {
         day := weekStart.AddDate(0, 0, d)
         dateKey := day.Format("2006-01-02")
@@ -499,8 +491,8 @@ func fillWeekSheet(f *excelize.File, sheet string, req TimecardRequest, week Wee
         rowReg := 5 + d
         rowOT := 16 + d
 
-        _ = setCellValueWithBorder(f, sheet, fmt.Sprintf("B%d", rowReg), dateSerial)
-        _ = setCellValueWithBorder(f, sheet, fmt.Sprintf("B%d", rowOT), dateSerial)
+        _ = f.SetCellValue(sheet, fmt.Sprintf("B%d", rowReg), dateSerial)
+        _ = f.SetCellValue(sheet, fmt.Sprintf("B%d", rowOT), dateSerial)
 
         if hours := regMap[dateKey]; hours != nil {
             for i, key := range regularKeys {
@@ -509,7 +501,7 @@ func fillWeekSheet(f *excelize.File, sheet string, req TimecardRequest, week Wee
                 }
                 if v, ok := hours[key]; ok && v != 0 {
                     cell := fmt.Sprintf("%s%d", codeCols[i], rowReg)
-                    _ = setCellValueWithBorder(f, sheet, cell, v) // numeric with border
+                    _ = f.SetCellValue(sheet, cell, v)
                     log.Printf("    REG %s = %.2f (%s)", cell, v, key)
                 }
             }
@@ -521,11 +513,23 @@ func fillWeekSheet(f *excelize.File, sheet string, req TimecardRequest, week Wee
                 }
                 if v, ok := hours[key]; ok && v != 0 {
                     cell := fmt.Sprintf("%s%d", codeCols[i], rowOT)
-                    _ = setCellValueWithBorder(f, sheet, cell, v) // numeric with border
+                    _ = f.SetCellValue(sheet, cell, v)
                     log.Printf("    OT  %s = %.2f (%s)", cell, v, key)
                 }
             }
         }
+    }
+
+    // Apply borders to the entire Regular Time table (rows 4-11, columns A-AJ)
+    log.Printf("Applying borders to Regular Time table...")
+    if err := applyBordersToRange(f, sheet, "A4", "AJ12"); err != nil {
+        log.Printf("Warning: Failed to apply borders to regular table: %v", err)
+    }
+
+    // Apply borders to the entire Overtime table (rows 15-23, columns A-AJ)  
+    log.Printf("Applying borders to Overtime table...")
+    if err := applyBordersToRange(f, sheet, "A15", "AJ24"); err != nil {
+        log.Printf("Warning: Failed to apply borders to overtime table: %v", err)
     }
 
     log.Printf("=== %s week %d done ===", sheet, weekNum)
